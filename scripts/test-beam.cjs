@@ -5,6 +5,8 @@ const data = window.ADELAIDE_DATA;
 assert.ok(!Object.hasOwn(data, 'heatmapAvailable'), 'Published data must not contain a screenshot-derived heatmap flag');
 assert.ok(data.edges.every(edge => edge.length === 7 || edge.length === 8), 'Published edges use the heatmap-free schema');
 const createBeamEngine = require('../beam-engine.js');
+const browserScope = {};
+require('node:vm').runInNewContext(require('node:fs').readFileSync(require.resolve('../beam-engine.js'), 'utf8'), { window: browserScope });
 const engine = createBeamEngine(data);
 const coordsFromXY = points => points.map(([x, y]) => [y / 111.1, x / 91.2]);
 const square = coordsFromXY([[0, 0], [1, 0], [1, 1], [0, 1], [2, 0]]);
@@ -25,6 +27,21 @@ const adjacentSquares = coordsFromXY([[0, 0], [1, 0], [1, 1], [0, 1], [2, 0], [2
 assert.ok(Math.abs(externalArea([0, 1, 2, 3, 0, 1, 4, 5, 2, 1, 0], adjacentSquares) - 2) < 1e-9, 'Attached loops must contribute their outer area once');
 const concave = coordsFromXY([[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]]);
 assert.ok(Math.abs(externalArea([0, 1, 2, 3, 4, 5, 0], concave) - 3) < 1e-9, 'The external hull must preserve concavities');
+const areaCases = [
+  ['bow-tie crossing without a shared input vertex', [[0, 0], [2, 2], [0, 2], [2, 0]], 2],
+  ['opposite-direction retracing', [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0], [0, 1], [1, 1], [1, 0], [0, 0]], 1],
+  ['partially overlapping, opposite-winding loops', [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0], [1, 0], [1, 2], [3, 2], [3, 0], [1, 0], [0, 0]], 6],
+  ['nested loop joined by a retraced spur', [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0], [1, 1], [1, 3], [3, 3], [3, 1], [1, 1], [0, 0]], 16],
+  ['two loops joined by a retraced bridge', [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0], [3, 0], [4, 0], [4, 1], [3, 1], [3, 0], [0, 0]], 2],
+  ['collinear overlap', [[0, 0], [2, 0], [1, 0], [3, 0], [0, 0]], 0],
+  ['duplicate points and pure out-and-back', [[0, 0], [0, 0], [1, 1], [2, 2], [1, 1], [0, 0]], 0]
+];
+for (const [name, points, expected] of areaCases) for (const reversed of [false, true]) for (const angle of [0, .37]) {
+  const rotated = points.map(([x, y]) => [x * Math.cos(angle) - y * Math.sin(angle) + 3, x * Math.sin(angle) + y * Math.cos(angle) - 2]);
+  const coordinates = coordsFromXY(reversed ? rotated.reverse() : rotated);
+  assert.ok(Math.abs(externalArea(coordinates.map((_, i) => i), coordinates) - expected) < 1e-8, `${name}, reversed=${reversed}, angle=${angle}`);
+  assert.ok(Math.abs(browserScope.createBeamEngine.externalHullArea(coordinates.map((_, i) => i), coordinates, coordinates[0]) - expected) < 1e-8, `Browser geometry: ${name}`);
+}
 const scores = { shop: 10, green: 300, large: 50, small: 40, majorRoad: 1000, crossing: 500, retrace: 1000, area: 10000, imported: 10, over: 150, under: 2000 };
 const popularity = new Uint8Array(data.nodes.length);
 const connected = new Set(data.edges.map(([a, b]) => `${Math.min(a, b)}:${Math.max(a, b)}`));
@@ -69,6 +86,24 @@ async function check(point, distance, width = 4, iterations = 2) {
   return result;
 }
 (async () => {
+  const root = engine.nearest([-34.929, 138.601]).node;
+  const snapshots = new Map();
+  const direct = await engine.generate(root, 5, scores, 4, 4, popularity, { benchmark: {
+    yieldToBrowser: async () => {}, stopAfterRound: 3, captureRounds: [2, 3],
+    onCheckpoint: state => snapshots.set(state.completedRounds, JSON.parse(JSON.stringify(state)))
+  } });
+  let replayedState;
+  const replayed = await engine.generate(root, 5, scores, 4, 4, popularity, { benchmark: {
+    yieldToBrowser: async () => {}, resume: snapshots.get(2), stopAfterRound: 3, captureRounds: [3],
+    onCheckpoint: state => { replayedState = JSON.parse(JSON.stringify(state)); }
+  } });
+  assert.deepEqual(replayed.routes, direct.routes, 'A replay produces the original round suggestions');
+  assert.deepEqual(replayedState, snapshots.get(3), 'Replay restores RNG, beam, counters, tile IDs, route history and LRU order exactly');
+  for (const route of replayedState.beam) {
+    const controls = [root, ...route.points.map(node => replayedState.nodeById[node]), root];
+    assert.equal(route.area, createBeamEngine.externalHullArea(controls, data.nodes, data.nodes[root]), 'Area is computed from start/control points, not expanded map vertices');
+  }
+  await assert.rejects(engine.generate(root, 6, scores, 4, 4, popularity, { benchmark: { resume: snapshots.get(2) } }), /does not match/);
   const cbd = await check([-34.929, 138.601], 5, 4, 2);
   const clovelly = await check([-35, 138.575], 5, 4, 2);
   await check([-34.929, 138.601], 25, 2, 1);
@@ -78,5 +113,5 @@ async function check(point, distance, width = 4, iterations = 2) {
   assert.notEqual(noGreen.routes[0].score, reserve.routes[0].score, 'Changing a baked feature weight changes route scores');
   assert.ok(data.poiAnchors?.small?.length && data.poiAnchors?.large?.length, 'Static bundle contains POI control-point anchors');
   assert.ok(cbd.search.legCalls > 0 && cbd.search.legCacheHits > 0, 'Repeated point pairs should be served from the LRU leg cache');
-  console.log('Route-space checks passed: closed connected loops, annealed mutation chains, bounded diversity states, live suggestions, control points, POI anchors, and external hull area.');
+  console.log('Route-space checks passed: closed connected loops, annealed mutation chains, bounded diversity states, live suggestions, POI anchors, checkpoint replay, and control-point area with noded crossings.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

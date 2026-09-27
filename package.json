@@ -2,7 +2,8 @@
   "private": true,
   "scripts": {
     "build:data": "node scripts/build-data.cjs",
-    "test": "node scripts/test-beam.cjs"
+    "test": "node scripts/test-beam.cjs",
+    "benchmark": "node scripts/benchmark-beam.cjs"
   },
   "devDependencies": {
     "leaflet": "^1.9.4",

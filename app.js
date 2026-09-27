@@ -103,7 +103,7 @@
       const card = document.createElement('div'); card.className = 'route-card'; card.tabIndex = 0; card.setAttribute('role', 'button');
       if (!notableCache.has(route.id)) notableCache.set(route.id, notable(route.path).slice(0, 3).map(f => escapeHtml(f.name)).join(' · '));
       const names = notableCache.get(route.id);
-      card.innerHTML = `<div class="route-top"><span class="route-title">Route ${i + 1}</span><span class="route-badge">${Math.round(route.score)} points</span></div><div class="route-meta"><span>↝ ${route.length.toFixed(1)} km</span><span>${route.area.toFixed(2)} km² outer area</span><span>${route.crossings} major-road crossings</span><span>${Math.round(route.repeated * 100)}% retraced</span><span>${Math.round(route.road * 100)}% near big roads</span></div><div class="route-features">${names || 'Local paths and streets'}</div><div class="route-actions"><a href="#" download="adelaide-route-${i + 1}.gpx">Download GPX ↓</a></div>`;
+      card.innerHTML = `<div class="route-top"><span class="route-title">Route ${i + 1}</span><span class="route-badge">${Math.round(route.score)} points</span></div><div class="route-meta"><span>↝ ${route.length.toFixed(1)} km</span><span>${route.area.toFixed(2)} km² approx. area</span><span>${route.crossings} major-road crossings</span><span>${Math.round(route.repeated * 100)}% retraced</span><span>${Math.round(route.road * 100)}% near big roads</span></div><div class="route-features">${names || 'Local paths and streets'}</div><div class="route-actions"><a href="#" download="adelaide-route-${i + 1}.gpx">Download GPX ↓</a></div>`;
       const link = card.querySelector('a');
       link.addEventListener('click', event => {
         event.stopPropagation();

@@ -3,44 +3,90 @@
   'use strict';
   const km = (a, b) => Math.hypot((a[0] - b[0]) * 111.1, (a[1] - b[1]) * 91.2);
   function externalHullArea(path, coords, origin) {
-    const xy = new Map(), adjacent = new Map(), edges = new Set();
-    function point(node) {
-      if (!xy.has(node)) xy.set(node, [(coords[node][1] - origin[1]) * 91.2, (coords[node][0] - origin[0]) * 111.1]);
-      return xy.get(node);
+    // A tiny planar arrangement of the start/control-point outline. Split all
+    // intersections (including collinear overlaps), dissolve duplicate edges,
+    // then follow half-edges around each face. No winding rule or convex hull.
+    const epsilon = 1e-9; // km: merge sub-micrometre floating-point differences.
+    const xy = path.map(node => [(coords[node][1] - origin[1]) * 91.2, (coords[node][0] - origin[0]) * 111.1]);
+    if (!xy.length) return 0;
+    const first = xy[0], last = xy.at(-1);
+    if (first[0] !== last[0] || first[1] !== last[1]) xy.push(first);
+    const cross = (a, b) => a[0] * b[1] - a[1] * b[0];
+    const subtract = (a, b) => [a[0] - b[0], a[1] - b[1]];
+    const segments = [];
+    for (let i = 1; i < xy.length; i++) {
+      const vector = subtract(xy[i], xy[i - 1]), length = Math.hypot(...vector);
+      if (length > epsilon) segments.push({ a: xy[i - 1], vector, length, cuts: [0, 1] });
     }
-    for (let i = 1; i < path.length; i++) {
-      const a = path[i - 1], b = path[i];
-      if (a === b || km(coords[a], coords[b]) < 1e-8) continue;
-      const key = `${Math.min(a, b)}:${Math.max(a, b)}`;
-      if (edges.has(key)) continue;
-      edges.add(key);
-      if (!adjacent.has(a)) adjacent.set(a, []);
-      if (!adjacent.has(b)) adjacent.set(b, []);
-      adjacent.get(a).push(b); adjacent.get(b).push(a);
+    function addCut(segment, t) {
+      const tolerance = epsilon / segment.length;
+      if (t >= -tolerance && t <= 1 + tolerance) segment.cuts.push(Math.max(0, Math.min(1, t)));
+    }
+    for (let i = 0; i < segments.length; i++) for (let j = i + 1; j < segments.length; j++) {
+      const a = segments[i], b = segments[j], delta = subtract(b.a, a.a), determinant = cross(a.vector, b.vector);
+      if (Math.abs(determinant) > epsilon * (a.length + b.length)) {
+        const t = cross(delta, b.vector) / determinant, u = cross(delta, a.vector) / determinant;
+        if (t >= -epsilon / a.length && t <= 1 + epsilon / a.length && u >= -epsilon / b.length && u <= 1 + epsilon / b.length) {
+          addCut(a, t); addCut(b, u);
+        }
+      } else if (Math.abs(cross(delta, a.vector)) <= epsilon * a.length) {
+        // Collinear overlap: cut each segment at the other's endpoints.
+        for (const [segment, other] of [[a, b], [b, a]]) for (const t of [0, 1]) {
+          const offset = [other.a[0] + t * other.vector[0] - segment.a[0], other.a[1] + t * other.vector[1] - segment.a[1]];
+          addCut(segment, (offset[0] * segment.vector[0] + offset[1] * segment.vector[1]) / segment.length ** 2);
+        }
+      }
+    }
+    const vertices = [], buckets = new Map(), adjacent = [], edges = new Set();
+    function vertex(point) {
+      const x = Math.floor(point[0] / epsilon), y = Math.floor(point[1] / epsilon);
+      // Check neighbouring buckets, so a rounding boundary cannot split one
+      // geometric intersection into two almost-identical graph vertices.
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (const id of buckets.get(`${x + dx}:${y + dy}`) || []) {
+        if (Math.hypot(vertices[id][0] - point[0], vertices[id][1] - point[1]) <= epsilon) return id;
+      }
+      const id = vertices.length, key = `${x}:${y}`;
+      vertices.push(point); adjacent.push([]);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(id);
+      return id;
+    }
+    for (const segment of segments) {
+      segment.cuts.sort((a, b) => a - b);
+      let previous = null, previousCut = -Infinity;
+      for (const t of segment.cuts) {
+        if (t - previousCut <= epsilon / segment.length) continue;
+        previousCut = t;
+        const id = vertex([segment.a[0] + t * segment.vector[0], segment.a[1] + t * segment.vector[1]]);
+        if (previous !== null && previous !== id) {
+          const key = `${Math.min(previous, id)}:${Math.max(previous, id)}`;
+          if (!edges.has(key)) { edges.add(key); adjacent[previous].push(id); adjacent[id].push(previous); }
+        }
+        previous = id;
+      }
     }
     if (edges.size < 3) return 0;
     const next = new Map();
-    for (const [node, neighbours] of adjacent) {
-      const p = point(node);
-      neighbours.sort((a, b) => {
-        const q = point(a), r = point(b);
-        return Math.atan2(q[1] - p[1], q[0] - p[0]) - Math.atan2(r[1] - p[1], r[0] - p[0]);
-      });
+    adjacent.forEach((neighbours, node) => {
+      const p = vertices[node];
+      neighbours.sort((a, b) => Math.atan2(vertices[a][1] - p[1], vertices[a][0] - p[0]) - Math.atan2(vertices[b][1] - p[1], vertices[b][0] - p[0]));
       for (let i = 0; i < neighbours.length; i++) next.set(`${neighbours[i]}:${node}`, neighbours[(i + neighbours.length - 1) % neighbours.length]);
-    }
+    });
     const visited = new Set(); let outerArea = 0;
-    for (const [start, neighbours] of adjacent) for (const neighbour of neighbours) {
-      let a = start, b = neighbour, doubleArea = 0;
-      while (!visited.has(`${a}:${b}`)) {
-        visited.add(`${a}:${b}`);
-        const p = point(a), q = point(b);
-        doubleArea += p[0] * q[1] - q[0] * p[1];
-        const following = next.get(`${a}:${b}`);
-        if (following === undefined) break;
-        a = b; b = following;
+    adjacent.forEach((neighbours, start) => {
+      for (const neighbour of neighbours) {
+        let a = start, b = neighbour, doubleArea = 0;
+        while (!visited.has(`${a}:${b}`)) {
+          visited.add(`${a}:${b}`);
+          doubleArea += cross(vertices[a], vertices[b]);
+          const following = next.get(`${a}:${b}`);
+          a = b; b = following;
+        }
+        // The outline is connected. Its unbounded face encloses every bounded
+        // face, including nested loops; its magnitude is the total outer area.
+        outerArea = Math.max(outerArea, Math.abs(doubleArea) / 2);
       }
-      outerArea = Math.max(outerArea, Math.abs(doubleArea) / 2);
-    }
+    });
     return outerArea;
   }
   class Heap {
@@ -159,6 +205,9 @@
       return { node, distance };
     }
     async function generate(root, target, score, width, iterations, popularity, options = {}) {
+      // Opt-in round-boundary snapshots and hooks for reproducible benchmarks.
+      // Normal browser searches neither serialize state nor pay profiling costs.
+      const benchmark = options.benchmark;
       const started = Date.now();
       const searchRadius = target * .6;
       const near = new Uint8Array(coords.length), rootPoint = coords[root];
@@ -316,7 +365,8 @@
           current = next;
         }
         if (!length) return null;
-        const metrics = routeMetrics(all), area = externalHullArea(path, coords, rootPoint);
+        const controls = [root, ...points.map(node => nodeById[node]), root];
+        const metrics = routeMetrics(all), area = externalHullArea(controls, coords, rootPoint);
         const tiles = new Set();
         for (let i = 1; i < path.length; i++) {
           const a = coords[path[i - 1]], b = coords[path[i]];
@@ -391,16 +441,44 @@
         if (!bestRoute || route.score > bestRoute.score) bestRoute = route;
         return route;
       }
-      const progress = options.onProgress || (() => {}), cancelled = options.cancelled || (() => false), yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0));
+      const progress = options.onProgress || (() => {}), cancelled = options.cancelled || (() => false);
+      const yieldToBrowser = benchmark?.yieldToBrowser || (() => new Promise(resolve => setTimeout(resolve, 0)));
+      const settings = { root, target, score, width: maxWidth, iterations: rounds };
+      let firstRound = 0;
+      function checkpoint(completedRounds) {
+        const encodeRoute = route => route && ({ ...route, tileBits: [...route.tileBits] });
+        return {
+          version: 1, settings, completedRounds, nodeById, compressedEdges: edges.length,
+          seed, legCache: [...legCache], tileIds: [...tileIds], routeSeen: [...routeSeen],
+          beam: beam.map(encodeRoute), bestRoute: encodeRoute(bestRoute),
+          counters: { expanded, evaluated, mutationSteps, duplicateCount, longestMutationChain, legCalls, legCacheHits }
+        };
+      }
+      if (benchmark?.resume) {
+        const state = benchmark.resume;
+        if (state.version !== 1 || JSON.stringify(state.settings) !== JSON.stringify(settings) ||
+            state.compressedEdges !== edges.length || state.nodeById.join(',') !== nodeById.join(',') ||
+            !Number.isInteger(state.completedRounds) || state.completedRounds < 0 || state.completedRounds > rounds) {
+          throw new Error('Benchmark checkpoint does not match this search graph/settings');
+        }
+        const decodeRoute = route => route && ({ ...route, tileBits: Uint32Array.from(route.tileBits) });
+        firstRound = state.completedRounds; seed = state.seed;
+        for (const [key, value] of state.legCache) legCache.set(key, value);
+        for (const [key, value] of state.tileIds) tileIds.set(key, value);
+        for (const key of state.routeSeen) routeSeen.add(key);
+        beam.push(...state.beam.map(decodeRoute)); bestRoute = decodeRoute(state.bestRoute);
+        ({ expanded, evaluated, mutationSteps, duplicateCount, longestMutationChain, legCalls, legCacheHits } = state.counters);
+      }
       await yieldToBrowser();
       if (cancelled()) return { routes: [], search: { rawEdges: raw.length, compressedEdges: edges.length, expanded: 0, evaluated: 0, candidates: 0, width: maxWidth, iterations: rounds, cancelled: true, timing: { graph: graphReady - started, search: 0 } } };
-      for (let i = 0; i < Math.min(maxWidth, 12); i++) {
+      for (let i = 0; !benchmark?.resume && i < Math.min(maxWidth, 12); i++) {
         if (cancelled()) break;
         const points = initialRoute(i); if (points) { const route = evaluate(points); if (route) { evaluated++; beam.push(keep(route)); } }
         await yieldToBrowser();
       }
-      for (let round = 0; round < rounds && beam.length; round++) {
+      for (let round = firstRound; round < Math.min(rounds, benchmark?.stopAfterRound ?? rounds) && beam.length; round++) {
         if (cancelled()) break;
+        if (benchmark?.beforeRound) await benchmark.beforeRound(round + 1);
         const continuationChance = mutationContinuationChance(round, rounds);
         const pool = [...beam];
         for (const candidate of beam) for (let m = 0; m < 3; m++) {
@@ -425,6 +503,9 @@
         const suggestions = selectFinalRoutes(beam).map(publicRoute);
         progress({ round: round + 1, iterations: rounds, width: maxWidth, evaluated, routes: routeSeen.size, best: bestRoute || beam[0], suggestions, continuationChance, mutationSteps, longestMutationChain });
         await yieldToBrowser();
+        if (benchmark?.afterRound) await benchmark.afterRound(round + 1);
+        // Capture after profiling has stopped: serialization is not search time.
+        if (benchmark?.captureRounds?.includes(round + 1)) benchmark.onCheckpoint(checkpoint(round + 1));
       }
       const routes = selectFinalRoutes(beam).map(publicRoute);
       return { routes, search: { rawEdges: raw.length, compressedEdges: edges.length, expanded, evaluated, mutationSteps, candidates: routeSeen.size, duplicates: duplicateCount, width: maxWidth, iterations: rounds, longestMutationChain, legCalls, legCacheHits, cancelled: cancelled(), timing: { graph: graphReady - started, search: Date.now() - graphReady } } };
