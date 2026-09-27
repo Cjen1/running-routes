@@ -1,0 +1,37 @@
+/* The existing light palette remains available via the theme button. */
+.brand #theme-toggle{margin-left:auto;white-space:nowrap;border:1px solid #cbdccf;border-radius:7px;background:transparent;color:#355c4e;padding:6px 8px;font:600 10px "DM Sans",sans-serif;letter-spacing:0;cursor:pointer}
+.brand #theme-toggle:hover{background:#e8f2e7}
+.trail-legend-line{width:17px;border-top:3px solid #52a39a;border-radius:3px;margin-left:7px}
+[data-theme="dark"]{color-scheme:dark;color:#e9f2ec;background:#101917}
+[data-theme="dark"] .panel{background:#15231f;box-shadow:8px 0 35px #0005}
+[data-theme="dark"] .brand,[data-theme="dark"] .brand strong,[data-theme="dark"] .form label,[data-theme="dark"] .section-heading h2{color:#dcefe1}
+[data-theme="dark"] .brand-mark{background:#315c43;color:#dbf3d8}
+[data-theme="dark"] .brand #theme-toggle{border-color:#466557;color:#d3eadb}
+[data-theme="dark"] .brand #theme-toggle:hover{background:#294338}
+[data-theme="dark"] .eyebrow,[data-theme="dark"] h1 em{color:#a9d78a}
+[data-theme="dark"] header p,[data-theme="dark"] .hint,[data-theme="dark"] .score-hint,[data-theme="dark"] #status,[data-theme="dark"] .beam-control small,[data-theme="dark"] footer{color:#a5b9aa}
+[data-theme="dark"] .input-wrap,[data-theme="dark"] .distance-wrap,[data-theme="dark"] select,[data-theme="dark"] .suggestions,[data-theme="dark"] .route-card,[data-theme="dark"] .weight-panel,[data-theme="dark"] .gpx-import,[data-theme="dark"] .secondary{background:#20322b;border-color:#3d5a49;color:#e9f2ec}
+[data-theme="dark"] .input-wrap input,[data-theme="dark"] .distance-wrap input,[data-theme="dark"] select{background:transparent;color:#f0f6ee}
+[data-theme="dark"] input::placeholder{color:#a4b8aa;opacity:1}
+[data-theme="dark"] .input-wrap>span,[data-theme="dark"] .input-wrap button,[data-theme="dark"] .distance-wrap span,[data-theme="dark"] .suggestions small,[data-theme="dark"] .section-heading>span{color:#b0cfb5}
+[data-theme="dark"] .input-wrap:focus-within{border-color:#80c69d;box-shadow:0 0 0 3px #51966a55}
+[data-theme="dark"] .suggestions{box-shadow:0 12px 22px #0007}
+[data-theme="dark"] .suggestions button{background:#20322b;border-color:#355044;color:#e4f0e7}
+[data-theme="dark"] .suggestions button:hover,[data-theme="dark"] .secondary:hover{background:#2b4938}
+[data-theme="dark"] .primary{background:#397f58;box-shadow:0 6px 14px #0004}
+[data-theme="dark"] .primary:hover{background:#478d65}
+[data-theme="dark"] .section-heading,[data-theme="dark"] .beam-control{border-color:#385044}
+[data-theme="dark"] .route-card:hover,[data-theme="dark"] .route-card.active{border-color:#82c99a;box-shadow:0 5px 17px #0004}
+[data-theme="dark"] .route-badge{background:#33563d;color:#c6ebc3}
+[data-theme="dark"] .route-meta,[data-theme="dark"] .route-features,[data-theme="dark"] .gpx-import,[data-theme="dark"] #gpx-status{color:#accbb5}
+[data-theme="dark"] .route-actions a,[data-theme="dark"] .gpx-import summary,[data-theme="dark"] .weight-panel summary,[data-theme="dark"] .beam-control output{color:#9bddb2}
+[data-theme="dark"] .score-grid input{background:#172922;border-color:#486251;color:#ecf6ed}
+[data-theme="dark"] .map-shell #map{background:#182523}
+[data-theme="dark"] .leaflet-tile-pane{filter:invert(.92) hue-rotate(180deg) brightness(.72) saturate(.75) contrast(1.07)}
+[data-theme="dark"] .area-pill,[data-theme="dark"] .map-top button,[data-theme="dark"] .map-legend,[data-theme="dark"] .map-tip{background:#1b3029;border-color:#42604d;box-shadow:0 4px 16px #0006;color:#dcefe1}
+[data-theme="dark"] .map-top button[aria-pressed=false]{color:#a5b9aa}
+[data-theme="dark"] .legend-line{border-color:#57d7a2}
+[data-theme="dark"] .trail-legend-line{border-color:#6acac1}
+[data-theme="dark"] .start-pin{background:#48be84;border-color:#edf7ed;box-shadow:0 1px 7px #0009}
+[data-theme="dark"] .leaflet-control-zoom a,[data-theme="dark"] .leaflet-control-attribution,[data-theme="dark"] .leaflet-popup-content-wrapper,[data-theme="dark"] .leaflet-popup-tip{background:#1b3029;color:#e2f0e6;border-color:#42604d}
+[data-theme="dark"] .leaflet-control-attribution a,[data-theme="dark"] .leaflet-popup-content a{color:#a4dbb2}

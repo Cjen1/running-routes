@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en-AU" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Adelaide Run Finder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="extras.css">
+  <link rel="stylesheet" href="dark.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="panel">
+      <div class="brand"><span class="brand-mark">↝</span><span>ADELAIDE <strong>RUN FINDER</strong></span><button id="theme-toggle" type="button" aria-label="Switch to light mode">☀ Light</button></div>
+      <header>
+        <div class="eyebrow">ROUTES WITH A VIEW</div>
+        <h1>Go the<br><em>scenic way.</em></h1>
+        <p>Find a run that makes the most of Adelaide's parks, paths and places worth passing.</p>
+      </header>
+      <section class="form" aria-label="Route settings">
+        <label for="start">Starting point</label>
+        <div class="input-wrap"><span aria-hidden="true">⌕</span><input id="start" autocomplete="off" spellcheck="false" placeholder="Search a place, street or address" value="Victoria Square / Tarntanyangga"><button id="locate" type="button" title="Use my location" aria-label="Use my location">◎</button></div>
+        <div id="suggestions" class="suggestions" hidden></div>
+        <div class="hint">Search a local place or click anywhere on the map.</div>
+        <div class="distance-control"><label for="distance">Distance</label><div class="distance-wrap"><input id="distance" type="number" min="2" max="25" step="0.5" value="5"><span>km</span></div></div>
+        <details class="weight-panel"><summary>Route scores & search controls <small>customise</small></summary>
+          <p class="score-hint">Green and large-feature points are per 100 m of unique path. Small POIs and shops score once each; crossings count every traversal.</p>
+          <div class="score-grid">
+            <label>Shop (each) <input data-score="shop" type="number" min="0" max="500" value="10"></label>
+            <label>Inside green / trail <input data-score="green" type="number" min="0" max="1000" value="300"></label>
+            <label>Near large POI ≤100 m <input data-score="large" type="number" min="0" max="1000" value="50"></label>
+            <label>Near small POI (each) <input data-score="small" type="number" min="0" max="1000" value="40"></label>
+            <label>Major road (minus) <input data-score="majorRoad" type="number" min="0" max="2000" value="1000"></label>
+            <label>Major road crossing (minus) <input data-score="crossing" type="number" min="0" max="2000" value="500"></label>
+            <label>Retracing / 100 m (minus) <input data-score="retrace" type="number" min="0" max="3000" value="1000"></label>
+            <label>Outer route area (max points) <input data-score="area" type="number" min="0" max="20000" value="10000"></label>
+            <label>My GPX tracks <input data-score="imported" type="number" min="0" max="500" value="10"></label>
+            <label>Over distance (minus) <input data-score="over" type="number" min="0" max="500" value="150"></label>
+            <label>Under distance (minus) <input data-score="under" type="number" min="0" max="3000" value="2000"></label>
+          </div>
+          <p class="score-hint">Distance is guided by the over/under point penalties, without a hard cutoff.</p>
+          <div class="beam-control"><label for="beam-width">Beam width <output id="beam-value">32</output></label><input id="beam-width" type="range" min="4" max="100" step="4" value="32"><small>Whole route candidates kept after each mutation round.</small></div>
+          <div class="beam-control"><label for="iterations">Iterations <output id="iterations-value">20</output></label><input id="iterations" type="range" min="2" max="100" step="1" value="20"><small>Mutation rounds. Repeat-mutation chance falls from 90% to 0%, with at most 6 mutations per child. Wider/deeper searches can take a long time.</small></div>
+        </details>
+        <button id="find" class="primary" type="button">Find my routes <span aria-hidden="true">↗</span></button><button id="cancel-search" class="secondary" type="button" hidden>Cancel search</button>
+        <details class="gpx-import"><summary>Have GPX tracks?</summary><p>Import local tracks to favour paths you have used. Files stay in this browser tab.</p><label for="gpx-files">Choose GPX files</label><input id="gpx-files" type="file" accept=".gpx,application/gpx+xml" multiple><div id="gpx-status">No tracks imported</div></details>
+      </section>
+      <section class="results-section" aria-live="polite"><div class="section-heading"><h2>Suggested routes</h2><span id="result-count">—</span></div><p id="status">Choose a start and distance to explore.</p><div id="results" aria-live="off"></div></section>
+      <footer><span class="status-dot"></span> Local Adelaide route data <span class="footer-sep">·</span> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors · ODbL</a> <span class="footer-sep">·</span> <a href="https://lsa4.geohub.sa.gov.au/server/rest/services/LSA/LocationSAViewerV34/MapServer/97" target="_blank" rel="noopener">Government of South Australia Recreation Trails · CC BY 4.0</a> <span class="footer-sep">·</span> <a href="https://github.com/Cjen1/running-routes/blob/main/DATA_SOURCES.md" target="_blank" rel="noopener">Data licences</a></footer>
+    </aside>
+    <main class="map-shell">
+      <div id="map" role="application" aria-label="Map of Adelaide running routes"></div>
+      <div class="map-top"><span class="area-pill"><span class="pulse"></span> ADELAIDE · CBD & INNER SUBURBS</span><button id="overlay-toggle" type="button" aria-pressed="true">✦ Scenic features <span id="overlay-count"></span></button></div>
+      <div class="map-legend"><span id="route-legend-line" class="legend-line"></span><span id="route-legend-label">Selected route</span><span class="trail-legend-line"></span> Walking trail <span class="legend-dot"></span> Scenic feature</div>
+      <div class="map-tip" id="map-tip">Click the map to set your start point</div>
+    </main>
+  </div>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="data.js"></script>
+  <script src="beam-engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "scripts": {
+    "build:data": "node scripts/build-data.cjs",
+    "test": "node scripts/test-beam.cjs"
+  },
+  "devDependencies": {
+    "leaflet": "^1.9.4",
+    "osm-pbf-parser": "2.3.0"
+  }
+}
