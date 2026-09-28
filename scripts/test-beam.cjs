@@ -11,12 +11,31 @@ const engine = createBeamEngine(data);
 const coordsFromXY = points => points.map(([x, y]) => [y / 111.1, x / 91.2]);
 const square = coordsFromXY([[0, 0], [1, 0], [1, 1], [0, 1], [2, 0]]);
 const externalArea = (path, coords) => createBeamEngine.externalHullArea(path, coords, coords[0]);
+const samplePoints = coordsFromXY([[0, 0], [1, 0], [1, 3]]);
+const sampleExpectations = [[0, [0, 0]], [.125, [.5, 0]], [.5, [1, 1]], [1, [1, 3]]];
+for (const [fraction, expected] of sampleExpectations) {
+  const sample = createBeamEngine.samplePolyline(samplePoints, fraction);
+  const target = coordsFromXY([expected])[0];
+  assert.ok(sample.every((value, axis) => Math.abs(value - target[axis]) < 1e-12), 'Outline sampling interpolates along segments, weighted by their length');
+}
+assert.deepEqual(createBeamEngine.samplePolyline([[0, 0], [0, 0]], .5), [0, 0]);
+assert.equal(createBeamEngine.samplePolyline([], .5), null);
 const bitsetRoute = (name, bits, score) => ({ name, tileBits: Uint32Array.of(bits), tileCount: bits.toString(2).replace(/0/g, '').length, score });
 const choices = [bitsetRoute('A', 0b110, 12), bitsetRoute('B', 0b010, 11), bitsetRoute('C', 0b001, 10), bitsetRoute('D', 0b100, 9)];
 assert.equal(createBeamEngine.diversityStateLimit, 10);
-assert.equal(createBeamEngine.diversityCellKm, .5);
-assert.equal(createBeamEngine.maxMutationsPerChild, 6);
+assert.equal(createBeamEngine.diversityCellKm(2), .5);
+assert.equal(createBeamEngine.diversityCellKm(5), 1.25);
+assert.equal(createBeamEngine.diversityCellKm(10), 2.5);
+assert.equal(createBeamEngine.diversityCellKm(25), 6.25);
+assert.equal(createBeamEngine.diversityCellKm(5, .2), 1);
+assert.equal(createBeamEngine.diversityCellKm(5, .01), .05);
+assert.equal(createBeamEngine.diversityCellKm(5, 0), .05);
+assert.equal(createBeamEngine.diversityCellKm(5, 1), 2.5);
 assert.equal(createBeamEngine.mutationContinuationChance(0, 20), .9);
+assert.equal(createBeamEngine.mutationContinuationChance(9, 20), .9);
+assert.equal(createBeamEngine.mutationContinuationChance(10, 21), .9);
+assert.equal(createBeamEngine.mutationContinuationChance(15, 21), .45);
+assert.equal(createBeamEngine.mutationContinuationChance(20, 21), 0);
 assert.equal(createBeamEngine.mutationContinuationChance(19, 20), 0);
 assert.equal(createBeamEngine.mutationContinuationChance(0, 1), 0);
 assert.deepEqual(createBeamEngine.selectFinalRoutes(choices, 3).map(route => route.name), ['B', 'C', 'D'], 'Competing bitset states must survive a locally better but overlapping prefix');
@@ -62,9 +81,12 @@ async function check(point, distance, width = 4, iterations = 2) {
   assert.deepEqual(liveSuggestions.map(route => route.id), result.routes.map(route => route.id), 'The last live suggestions should match the final result');
   assert.equal(continuationChances[0], iterations > 1 ? .9 : 0);
   assert.equal(continuationChances.at(-1), 0);
+  assert.ok(continuationChances.every((chance, i) => i > (iterations - 1) / 2 || iterations === 1 || chance === .9), 'Continuation chance stays at 90% through the first half');
   assert.ok(continuationChances.every((chance, i) => i === 0 || chance <= continuationChances[i - 1]));
-  assert.ok(result.search.longestMutationChain >= 1 && result.search.longestMutationChain <= createBeamEngine.maxMutationsPerChild);
-  assert.ok(result.search.mutationSteps >= result.search.expanded, 'Intermediate mutations are evaluated before one terminal child enters the beam pool');
+  assert.ok(result.search.longestMutationChain >= 1);
+  if (iterations > 1) assert.ok(result.search.longestMutationChain > 6, 'Stochastic mutation chains can exceed the former six-mutation cap');
+  assert.ok(result.search.mutationSteps >= result.search.expanded, 'A chain can apply several control-point edits before emitting one child');
+  assert.ok(result.search.evaluated >= result.search.expanded && result.search.evaluated <= result.search.expanded + Math.min(width, 12), 'Only seeds and terminal children are evaluated');
   assert.ok(result.search.expanded <= width * 3 * iterations, 'Each parent can submit at most three terminal children per round');
   assert.ok(result.search.width === width && result.search.iterations === iterations);
   assert.ok(result.routes.length >= 1, `Expected at least one loop near ${point}`);
@@ -99,11 +121,14 @@ async function check(point, distance, width = 4, iterations = 2) {
   } });
   assert.deepEqual(replayed.routes, direct.routes, 'A replay produces the original round suggestions');
   assert.deepEqual(replayedState, snapshots.get(3), 'Replay restores RNG, beam, counters, tile IDs, route history and LRU order exactly');
+  const before = snapshots.get(2).counters, after = snapshots.get(3).counters;
+  assert.equal(after.evaluated - before.evaluated, after.expanded - before.expanded, 'A mid-run round scores exactly one route per emitted terminal child, never intermediate outlines');
   for (const route of replayedState.beam) {
     const controls = [root, ...route.points.map(node => replayedState.nodeById[node]), root];
     assert.equal(route.area, createBeamEngine.externalHullArea(controls, data.nodes, data.nodes[root]), 'Area is computed from start/control points, not expanded map vertices');
   }
   await assert.rejects(engine.generate(root, 6, scores, 4, 4, popularity, { benchmark: { resume: snapshots.get(2) } }), /does not match/);
+  await assert.rejects(engine.generate(root, 5, scores, 4, 4, popularity, { diversityTileFraction: .2, benchmark: { resume: snapshots.get(2) } }), /does not match/);
   const cbd = await check([-34.929, 138.601], 5, 4, 2);
   const clovelly = await check([-35, 138.575], 5, 4, 2);
   await check([-34.929, 138.601], 25, 2, 1);
@@ -113,5 +138,11 @@ async function check(point, distance, width = 4, iterations = 2) {
   assert.notEqual(noGreen.routes[0].score, reserve.routes[0].score, 'Changing a baked feature weight changes route scores');
   assert.ok(data.poiAnchors?.small?.length && data.poiAnchors?.large?.length, 'Static bundle contains POI control-point anchors');
   assert.ok(cbd.search.legCalls > 0 && cbd.search.legCacheHits > 0, 'Repeated point pairs should be served from the LRU leg cache');
+  let cancelled = false;
+  const partial = await engine.generate(root, 5, scores, 4, 200, popularity, {
+    cancelled: () => cancelled, onProgress: () => { cancelled = true; }, benchmark: { yieldToBrowser: async () => {} }
+  });
+  assert.ok(partial.search.cancelled && partial.routes.length, 'Cancelling retains the last completed beam suggestions');
+  assert.equal(partial.search.iterations, 200, 'The engine accepts the full UI iteration range');
   console.log('Route-space checks passed: closed connected loops, annealed mutation chains, bounded diversity states, live suggestions, POI anchors, checkpoint replay, and control-point area with noded crossings.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

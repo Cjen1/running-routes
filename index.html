@@ -17,9 +17,7 @@
     <aside class="panel">
       <div class="brand"><span class="brand-mark">↝</span><span>ADELAIDE <strong>RUN FINDER</strong></span><button id="theme-toggle" type="button" aria-label="Switch to light mode">☀ Light</button></div>
       <header>
-        <div class="eyebrow">ROUTES WITH A VIEW</div>
-        <h1>Go the<br><em>scenic way.</em></h1>
-        <p>Find a run that makes the most of Adelaide's parks, paths and places worth passing.</p>
+        <h1>Running routes</h1>
       </header>
       <section class="form" aria-label="Route settings">
         <label for="start">Starting point</label>
@@ -44,12 +42,13 @@
           </div>
           <p class="score-hint">Distance is guided by the over/under point penalties, without a hard cutoff.</p>
           <div class="beam-control"><label for="beam-width">Beam width <output id="beam-value">32</output></label><input id="beam-width" type="range" min="4" max="100" step="4" value="32"><small>Whole route candidates kept after each mutation round.</small></div>
-          <div class="beam-control"><label for="iterations">Iterations <output id="iterations-value">20</output></label><input id="iterations" type="range" min="2" max="100" step="1" value="20"><small>Mutation rounds. Repeat-mutation chance falls from 90% to 0%, with at most 6 mutations per child. Wider/deeper searches can take a long time.</small></div>
+          <div class="beam-control"><label for="tile-size">Diversity tile side length <output id="tile-size-value">25% · 1250 m</output></label><input id="tile-size" type="range" min="1" max="50" step="1" value="25"><small>Percentage of target distance. Larger tiles distinguish broader route areas.</small></div>
+          <div class="beam-control"><label for="iterations">Iterations <output id="iterations-value">100</output></label><input id="iterations" type="range" min="50" max="200" step="1" value="100"><small>Mutation rounds. Repeat-mutation chance stays at 90% through the first half, then falls linearly to 0%. No fixed mutation limit. Wider/deeper searches take longer.</small></div>
         </details>
-        <button id="find" class="primary" type="button">Find my routes <span aria-hidden="true">↗</span></button><button id="cancel-search" class="secondary" type="button" hidden>Cancel search</button>
-        <details class="gpx-import"><summary>Have GPX tracks?</summary><p>Import local tracks to favour paths you have used. Files stay in this browser tab.</p><label for="gpx-files">Choose GPX files</label><input id="gpx-files" type="file" accept=".gpx,application/gpx+xml" multiple><div id="gpx-status">No tracks imported</div></details>
+        <button id="find" class="primary" type="button">Find routes <span aria-hidden="true">↗</span></button><button id="cancel-search" class="secondary" type="button" hidden>Cancel search</button>
+        <details class="gpx-import"><summary>Import GPX tracks</summary><p>Import local tracks to favour paths you have used. Files stay in this browser tab.</p><label for="gpx-files">Choose GPX files</label><input id="gpx-files" type="file" accept=".gpx,application/gpx+xml" multiple><div id="gpx-status">No tracks imported</div></details>
       </section>
-      <section class="results-section" aria-live="polite"><div class="section-heading"><h2>Suggested routes</h2><span id="result-count">—</span></div><p id="status">Choose a start and distance to explore.</p><div id="results" aria-live="off"></div></section>
+      <section class="results-section" aria-live="polite"><div class="section-heading"><h2>Suggested routes</h2><span id="result-count">—</span></div><p id="status">Set a starting point and distance.</p><div id="results" aria-live="off"></div></section>
       <footer><span class="status-dot"></span> Local Adelaide route data <span class="footer-sep">·</span> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors · ODbL</a> <span class="footer-sep">·</span> <a href="https://lsa4.geohub.sa.gov.au/server/rest/services/LSA/LocationSAViewerV34/MapServer/97" target="_blank" rel="noopener">Government of South Australia Recreation Trails · CC BY 4.0</a> <span class="footer-sep">·</span> <a href="https://github.com/Cjen1/running-routes/blob/main/DATA_SOURCES.md" target="_blank" rel="noopener">Data licences</a></footer>
     </aside>
     <main class="map-shell">
@@ -61,7 +60,7 @@
   </div>
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="data.js"></script>
-  <script src="beam-engine.js?v=control-area-20260928"></script>
-  <script src="app.js?v=control-area-20260928"></script>
+  <script src="beam-engine.js?v=search-defaults-20260928"></script>
+  <script src="app.js?v=tile-slider-20260928"></script>
 </body>
 </html>

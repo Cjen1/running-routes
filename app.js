@@ -129,6 +129,13 @@
     else { routeLayer.clearLayers(); $('route-legend-line').classList.remove('preview'); $('route-legend-label').textContent = 'Selected route'; }
   }
   const search = $('start'), distanceInput = $('distance'), beamInput = $('beam-width'), iterationInput = $('iterations');
+  const tileInput = $('tile-size');
+  function updateTileSize() {
+    const target = Number(distanceInput.value), percent = Number(tileInput.value);
+    $('tile-size-value').value = `${percent}% · ${Number.isFinite(target) && target > 0 ? Math.round(target * percent * 10) + ' m' : '—'}`;
+  }
+  tileInput.addEventListener('input', updateTileSize);
+  distanceInput.addEventListener('input', updateTileSize);
   let searchGeneration = 0;
   function updateBeamLimit() {
     beamInput.max = '100';
@@ -159,6 +166,7 @@
     status.textContent = 'Preparing the local walking graph…';
     try {
       const result = await engine.generate(snapped.node, target, currentScores(), Number(beamInput.value), Number(iterationInput.value), popularity, {
+        diversityTileFraction: Number(tileInput.value) / 100,
         cancelled: () => generation !== searchGeneration,
         onProgress: progress => {
           if (generation !== searchGeneration) return;
@@ -249,7 +257,7 @@
   map.on('click', event => setStart([event.latlng.lat, event.latlng.lng], `${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`));
   const initial = data.places.find(p => p.name.toLowerCase() === 'victoria square / tarntanyangga') || data.places.find(p => p.kind !== 'address' && p.name.toLowerCase().includes('victoria square'));
   setStart(initial ? [initial.lat, initial.lon] : startPoint, initial ? initial.name : 'Victoria Square / Tarntanyangga');
-  updateBeamLimit(); renderFeatures();
-  status.textContent = `Local routes updated ${data.built}. Choose a start and distance to explore.`;
+  updateBeamLimit(); updateTileSize(); renderFeatures();
+  status.textContent = `Route data updated ${data.built}. Set a starting point and distance.`;
   setTimeout(findRoutes, 100);
 })();

@@ -2,6 +2,20 @@
 (function (scope) {
   'use strict';
   const km = (a, b) => Math.hypot((a[0] - b[0]) * 111.1, (a[1] - b[1]) * 91.2);
+  function samplePolyline(points, fraction) {
+    if (!points.length) return null;
+    const lengths = points.slice(1).map((point, i) => km(points[i], point));
+    let remaining = Math.max(0, Math.min(1, fraction)) * lengths.reduce((sum, length) => sum + length, 0);
+    for (let i = 0; i < lengths.length; i++) {
+      const length = lengths[i];
+      if (remaining <= length || i === lengths.length - 1) {
+        const t = length ? Math.max(0, Math.min(1, remaining / length)) : 0;
+        return points[i].map((value, axis) => value + (points[i + 1][axis] - value) * t);
+      }
+      remaining -= length;
+    }
+    return points[0];
+  }
   function externalHullArea(path, coords, origin) {
     // A tiny planar arrangement of the start/control-point outline. Split all
     // intersections (including collinear overlaps), dissolve duplicate edges,
@@ -96,10 +110,9 @@
     pop() { const a = this.items, top = a[0], last = a.pop(); if (a.length) { let i = 0; while (2 * i + 1 < a.length) { let c = 2 * i + 1; if (c + 1 < a.length && a[c + 1][0] > a[c][0]) c++; if (last[0] >= a[c][0]) break; a[i] = a[c]; i = c; } a[i] = last; } return top; }
   }
   const MAX_DIVERSITY_STATES = 10;
-  const DIVERSITY_CELL_KM = .5;
-  const MAX_MUTATIONS_PER_CHILD = 6;
+  const diversityCellKm = (target, fraction = .25) => target * Math.max(.01, Math.min(.5, Number.isFinite(fraction) ? fraction : .25));
   function mutationContinuationChance(round, rounds) {
-    return rounds < 2 ? 0 : .9 * (1 - round / (rounds - 1));
+    return rounds < 2 ? 0 : .9 * Math.min(1, 2 * (1 - round / (rounds - 1)));
   }
   function bitCount(word) {
     word -= (word >>> 1) & 0x55555555;
@@ -210,6 +223,7 @@
       const benchmark = options.benchmark;
       const started = Date.now();
       const searchRadius = target * .6;
+      const tileSizeKm = diversityCellKm(target, options.diversityTileFraction);
       const near = new Uint8Array(coords.length), rootPoint = coords[root];
       // Bound graph preparation, not the length of returned routes.
       for (let i = 0; i < coords.length; i++) near[i] = +(km(coords[i], rootPoint) <= searchRadius);
@@ -373,8 +387,8 @@
           const steps = Math.max(1, Math.ceil(km(a, b) / .09));
           for (let step = 0; step <= steps; step++) {
             const t = step / steps;
-            const x = Math.floor(((a[1] + (b[1] - a[1]) * t) - rootPoint[1]) * 91.2 / DIVERSITY_CELL_KM);
-            const y = Math.floor(((a[0] + (b[0] - a[0]) * t) - rootPoint[0]) * 111.1 / DIVERSITY_CELL_KM);
+            const x = Math.floor(((a[1] + (b[1] - a[1]) * t) - rootPoint[1]) * 91.2 / tileSizeKm);
+            const y = Math.floor(((a[0] + (b[0] - a[0]) * t) - rootPoint[0]) * 111.1 / tileSizeKm);
             const key = `${x}:${y}`;
             if (!tileIds.has(key)) tileIds.set(key, tileIds.size);
             tiles.add(tileIds.get(key));
@@ -404,14 +418,12 @@
           const key = cell(coords[nodeById[node]]); if (!poiSpatial.has(key)) poiSpatial.set(key, []); poiSpatial.get(key).push(node);
         }
       }
-      function sampleRoute(route) {
-        const cumulative = [0];
-        for (let i = 1; i < route.path.length; i++) cumulative.push(cumulative[i - 1] + km(coords[route.path[i - 1]], coords[route.path[i]]));
-        const at = random() * cumulative.at(-1), index = Math.max(1, cumulative.findIndex(v => v >= at));
-        return coords[route.path[Math.min(route.path.length - 1, index)]];
+      function sampleRoute(points) {
+        const outline = [rootPoint, ...points.map(node => coords[nodeById[node]]), rootPoint];
+        return samplePolyline(outline, random());
       }
-      function nearbyControl(route, poiBias) {
-        const point = sampleRoute(route);
+      function nearbyControl(points, poiBias) {
+        const point = sampleRoute(points);
         if (poiBias && poiSpatial.size) {
           const [cy, cx] = cell(point).split(',').map(Number), candidates = [];
           for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) for (const node of poiSpatial.get(`${cy + dy},${cx + dx}`) || [])
@@ -421,16 +433,16 @@
         const angle = random() * Math.PI * 2, distance = .05 + random() * .45;
         return snap([point[0] + Math.cos(angle) * distance / 111.1, point[1] + Math.sin(angle) * distance / 91.2]);
       }
-      function mutate(route) {
-        const points = [...route.points], choice = random();
-        if (choice < .35 && points.length < 8) { const node = nearbyControl(route, false); if (node >= 0) points.splice(Math.floor(random() * (points.length + 1)), 0, node); }
-        else if (choice < .68 && points.length < 8) { const node = nearbyControl(route, true); if (node >= 0) points.splice(Math.floor(random() * (points.length + 1)), 0, node); }
-        else if (choice < .94 && points.length) { const i = Math.floor(random() * points.length), node = nearbyControl(route, choice > .84); if (node >= 0) points[i] = node; }
+      function mutate(controls) {
+        const points = [...controls], choice = random();
+        if (choice < .35 && points.length < 8) { const node = nearbyControl(controls, false); if (node >= 0) points.splice(Math.floor(random() * (points.length + 1)), 0, node); }
+        else if (choice < .68 && points.length < 8) { const node = nearbyControl(controls, true); if (node >= 0) points.splice(Math.floor(random() * (points.length + 1)), 0, node); }
+        else if (choice < .94 && points.length) { const i = Math.floor(random() * points.length), node = nearbyControl(controls, choice > .84); if (node >= 0) points[i] = node; }
         else if (points.length > 2) points.splice(Math.floor(random() * points.length), 1);
         for (let i = points.length - 1; i > 0; i--) if (points[i] === points[i - 1]) points.splice(i, 1);
         return points.length >= 2 ? points : null;
       }
-      const maxWidth = Math.max(2, Math.min(100, Number(width) || 32)), rounds = Math.max(1, Math.min(100, Number(iterations) || 20));
+      const maxWidth = Math.max(2, Math.min(100, Number(width) || 32)), rounds = Math.max(1, Math.min(200, Number(iterations) || 100));
       const routeSeen = new Set(), beam = []; let expanded = 0, evaluated = 0, mutationSteps = 0, duplicateCount = 0, longestMutationChain = 0, bestRoute = null;
       const routeKey = route => route.points.join(',');
       const publicRoute = r => ({ id: routeKey(r), path: r.path, length: r.length, scenic: r.scenicLength / r.length, popular: r.importedLength / r.length, road: r.roadLength / r.length, repeated: r.repeatedLength / r.length, crossings: r.crossings, area: r.area, score: r.score, parts: r.parts, controlPoints: r.points.length });
@@ -443,12 +455,12 @@
       }
       const progress = options.onProgress || (() => {}), cancelled = options.cancelled || (() => false);
       const yieldToBrowser = benchmark?.yieldToBrowser || (() => new Promise(resolve => setTimeout(resolve, 0)));
-      const settings = { root, target, score, width: maxWidth, iterations: rounds };
+      const settings = { root, target, score, width: maxWidth, iterations: rounds, tileSizeKm };
       let firstRound = 0;
       function checkpoint(completedRounds) {
         const encodeRoute = route => route && ({ ...route, tileBits: [...route.tileBits] });
         return {
-          version: 1, settings, completedRounds, nodeById, compressedEdges: edges.length,
+          version: 3, settings, completedRounds, nodeById, compressedEdges: edges.length,
           seed, legCache: [...legCache], tileIds: [...tileIds], routeSeen: [...routeSeen],
           beam: beam.map(encodeRoute), bestRoute: encodeRoute(bestRoute),
           counters: { expanded, evaluated, mutationSteps, duplicateCount, longestMutationChain, legCalls, legCacheHits }
@@ -456,7 +468,7 @@
       }
       if (benchmark?.resume) {
         const state = benchmark.resume;
-        if (state.version !== 1 || JSON.stringify(state.settings) !== JSON.stringify(settings) ||
+        if (state.version !== 3 || JSON.stringify(state.settings) !== JSON.stringify(settings) ||
             state.compressedEdges !== edges.length || state.nodeById.join(',') !== nodeById.join(',') ||
             !Number.isInteger(state.completedRounds) || state.completedRounds < 0 || state.completedRounds > rounds) {
           throw new Error('Benchmark checkpoint does not match this search graph/settings');
@@ -482,19 +494,23 @@
         const continuationChance = mutationContinuationChance(round, rounds);
         const pool = [...beam];
         for (const candidate of beam) for (let m = 0; m < 3; m++) {
-          let current = candidate;
-          for (let step = 0; step < MAX_MUTATIONS_PER_CHILD; step++) {
+          if (cancelled()) break;
+          let controls = candidate.points;
+          for (let step = 0; ; step++) {
             if (cancelled()) break;
-            const points = mutate(current);
-            if (!points || points.join(',') === current.points.join(',')) break;
-            const route = evaluate(points);
-            if (!route) break;
-            evaluated++; mutationSteps++; current = route;
+            const points = mutate(controls);
+            if (!points || points.join(',') === controls.join(',')) break;
+            controls = points; mutationSteps++;
             longestMutationChain = Math.max(longestMutationChain, step + 1);
-            await yieldToBrowser();
-            if (step + 1 === MAX_MUTATIONS_PER_CHILD || random() >= continuationChance) break;
+            if (random() >= continuationChance) break;
           }
-          if (current !== candidate) { pool.push(keep(current)); expanded++; }
+          if (cancelled()) break;
+          if (controls.join(',') === candidate.points.join(',')) continue;
+          // Intermediate control-point edits need neither A* nor scoring. Only
+          // the terminal child becomes a real routed candidate for this pool.
+          const route = evaluate(controls);
+          if (route) { evaluated++; pool.push(keep(route)); expanded++; }
+          await yieldToBrowser();
         }
         const unique = new Map();
         for (const route of pool) { const key = routeKey(route), old = unique.get(key); if (!old || route.score > old.score) unique.set(key, route); }
@@ -514,10 +530,10 @@
   }
   scope.createBeamEngine = createBeamEngine;
   createBeamEngine.externalHullArea = externalHullArea;
+  createBeamEngine.samplePolyline = samplePolyline;
   createBeamEngine.selectFinalRoutes = selectFinalRoutes;
   createBeamEngine.diversityStateLimit = MAX_DIVERSITY_STATES;
-  createBeamEngine.diversityCellKm = DIVERSITY_CELL_KM;
-  createBeamEngine.maxMutationsPerChild = MAX_MUTATIONS_PER_CHILD;
+  createBeamEngine.diversityCellKm = diversityCellKm;
   createBeamEngine.mutationContinuationChance = mutationContinuationChance;
   if (typeof module !== 'undefined' && module.exports) module.exports = createBeamEngine;
 })(typeof window !== 'undefined' ? window : globalThis);
